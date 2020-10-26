@@ -3,6 +3,40 @@ An event bus can be used between instances of one service
 
 ## Service instance discovery strategy
 
+### Base on Headless Services and DNS
+
+#### Define a headless service
+
+spring-cloud-gateway-headless.yaml
+
+~~~yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: spring-cloud-gateway-headless
+  labels:
+    app: gateway
+spec:
+  ports:
+    - name: gateway-headless-service
+      port: 8080
+      targetPort: 5225
+  # This must set be None    
+  clusterIP: None
+  selector:
+    trust-service: gateway
+~~~
+
+
+
+#### Use kubectl create headless service
+
+~~~
+kubectl create -f spring-cloud-gateway-headless.yaml
+~~~
+
+When service has configured selectors like in spring-cloud-gateway-headless.yaml,DNS is automatically configured and we can use DNS mechanism to find address of pod's IP.
+
 ### Base kubernetes service and use API to find instances.
 
 * API Access Control
