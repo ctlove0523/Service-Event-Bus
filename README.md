@@ -1,11 +1,6 @@
 # Service-Event-Bus
 An event bus can be used between instances of one service
 
-# Service-Event-Bus
-An event bus can be used between instances of one service
-
-
-
 ## Service instance discovery strategy
 
 ### Base kubernetes service and use API to find instances.
