@@ -9,6 +9,10 @@ import lombok.Setter;
 @Getter
 @Setter
 public class BroadcastEvent implements Serializable {
+	/**
+	 * 0：事件；1：事件确认消息
+	 */
+	private int type;
 	private String id;
 	private Map<String, Object> headers;
 	private String body;

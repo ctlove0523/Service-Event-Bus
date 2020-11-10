@@ -1,5 +1,7 @@
 package io.gtihub.ctlove0523.bus;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import io.github.ctlove0523.commons.serialization.JacksonUtil;
@@ -18,14 +20,37 @@ public class EventBusServer {
 	private LocalEventBus localEventBus;
 	private final AtomicBoolean stared = new AtomicBoolean(false);
 	private int port;
+	private final Map<String, NetSocket> clientConnections = new HashMap<>();
+	private final Map<String, BroadcastEvent> needAckEvents = new HashMap<>();
 
-	private void handleReceivedEvent(Buffer data) {
+
+	private void handleReceivedEvent(Buffer data, String clientHost) {
 		String jsonFormatData = data.toJson().toString();
 		BroadcastEvent broadcastEvent = JacksonUtil.json2Object(jsonFormatData, BroadcastEvent.class);
 		if (validBroadcastEvent(broadcastEvent)) {
 			Object localEvent = JacksonUtil.json2Object(broadcastEvent.getBody(), broadcastEvent.getBodyClass());
 			localEventBus.post(localEvent);
+			acknowledge(broadcastEvent, clientConnections.get(clientHost));
 		}
+	}
+
+	/**
+	 * todo: need ack ack event?
+	 */
+	private void acknowledge(BroadcastEvent broadcastEvent, NetSocket connection) {
+		needAckEvents.put(broadcastEvent.getId(), broadcastEvent);
+		BroadcastEvent ackEvent = new BroadcastEvent();
+		ackEvent.setType(1);
+		ackEvent.setId(broadcastEvent.getId());
+		connection.write(JacksonUtil.object2Json(ackEvent), new Handler<AsyncResult<Void>>() {
+			@Override
+			public void handle(AsyncResult<Void> event) {
+				if (event.succeeded()) {
+					log.trace("{} event ack success",broadcastEvent.getId());
+					needAckEvents.remove(broadcastEvent.getId());
+				}
+			}
+		});
 	}
 
 	/**
@@ -44,13 +69,31 @@ public class EventBusServer {
 				log.warn("event bus server get an exception ", throwable);
 			}
 		});
+		server.close(new Handler<AsyncResult<Void>>() {
+			@Override
+			public void handle(AsyncResult<Void> event) {
+				if (event.succeeded()) {
+					log.info("event bus server close success");
+					clientConnections.clear();
+				}
+			}
+		});
 		server.connectHandler(new Handler<NetSocket>() {
 			@Override
 			public void handle(NetSocket socket) {
+				String clientHost = socket.remoteAddress().host();
+				clientConnections.put(clientHost, socket);
+				socket.closeHandler(new Handler<Void>() {
+					@Override
+					public void handle(Void event) {
+						log.info("client close the connection");
+						clientConnections.remove(clientHost);
+					}
+				});
 				socket.handler(new Handler<Buffer>() {
 					@Override
 					public void handle(Buffer event) {
-						handleReceivedEvent(event);
+						handleReceivedEvent(event, clientHost);
 					}
 				});
 			}
