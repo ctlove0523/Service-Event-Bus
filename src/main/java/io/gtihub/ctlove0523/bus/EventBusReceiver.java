@@ -2,6 +2,9 @@ package io.gtihub.ctlove0523.bus;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import io.github.ctlove0523.commons.serialization.JacksonUtil;
@@ -14,15 +17,25 @@ import io.vertx.core.net.NetSocket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class EventBusServer {
-	private static final Logger log = LoggerFactory.getLogger(EventBusServer.class);
+public class EventBusReceiver {
+	private static final Logger log = LoggerFactory.getLogger(EventBusReceiver.class);
 	private final Vertx vertx = Vertx.vertx();
-	private LocalEventBus localEventBus;
+	private final LocalEventBus localEventBus;
 	private final AtomicBoolean stared = new AtomicBoolean(false);
-	private int port;
+	private final int port;
 	private final Map<String, NetSocket> clientConnections = new HashMap<>();
 	private final Map<String, BroadcastEvent> needAckEvents = new HashMap<>();
+	private ScheduledExecutorService worker = Executors.newScheduledThreadPool(1);
 
+	EventBusReceiver(LocalEventBus localEventBus, int port) {
+		this.localEventBus = localEventBus;
+		this.port = port;
+		start();
+		worker.scheduleWithFixedDelay(() -> {
+			Map<String, BroadcastEvent> snapshot = new HashMap<>(needAckEvents);
+			snapshot.forEach((s, broadcastEvent) -> acknowledge(broadcastEvent, clientConnections.get(s)));
+		}, 0, 5, TimeUnit.SECONDS);
+	}
 
 	private void handleReceivedEvent(Buffer data, String clientHost) {
 		String jsonFormatData = data.toJson().toString();
