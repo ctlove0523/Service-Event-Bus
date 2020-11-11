@@ -15,6 +15,8 @@ public class BroadcastEvent implements Serializable {
 	private int type;
 	private String id;
 	private Map<String, Object> headers;
+	private String senderHost;
+	private String receiverHost;
 	private String body;
 	private Class<?> bodyClass;
 }
