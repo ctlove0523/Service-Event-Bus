@@ -24,14 +24,27 @@ import org.slf4j.LoggerFactory;
 
 public class EventBusSender {
 	private static final Logger log = LoggerFactory.getLogger(EventBusSender.class);
+	private static final int DEFAULT_PORT = 7160;
 	private final Vertx vertx = Vertx.vertx();
 	private String serviceDomainName;
-	private ServiceResolver serviceResolver;
-	private int receiverPort;
-	private Map<String, NetSocket> receivers = new HashMap<>();
-	private LocalEventBus localEventBus;
-	private Map<String, List<BroadcastEvent>> waitAckEvents = new HashMap<>();
-	private Map<String, List<BroadcastEvent>> waitSendEvents = new HashMap<>();
+	private final ServiceResolver serviceResolver;
+	private final int receiverPort;
+	private final Map<String, NetSocket> receivers = new HashMap<>();
+	private final LocalEventBus localEventBus;
+	private final Map<String, List<BroadcastEvent>> waitAckEvents = new HashMap<>();
+	private final Map<String, List<BroadcastEvent>> waitSendEvents = new HashMap<>();
+
+	public EventBusSender(String serviceDomainName, ServiceResolver serviceResolver, LocalEventBus localEventBus) {
+		this(serviceDomainName, serviceResolver, DEFAULT_PORT, localEventBus);
+	}
+
+	public EventBusSender(String serviceDomainName, ServiceResolver serviceResolver, int receiverPort, LocalEventBus localEventBus) {
+		this.serviceDomainName = serviceDomainName;
+		this.serviceResolver = serviceResolver;
+		this.receiverPort = receiverPort;
+		this.localEventBus = localEventBus;
+		initReceivers();
+	}
 
 	public void post(Object event) {
 		BroadcastEvent broadcastEvent = new BroadcastEvent();
