@@ -27,7 +27,7 @@ public class EventBusReceiver {
 	private final Map<String, BroadcastEvent> needAckEvents = new HashMap<>();
 	private ScheduledExecutorService worker = Executors.newScheduledThreadPool(1);
 
-	EventBusReceiver(LocalEventBus localEventBus, int port) {
+	public EventBusReceiver(LocalEventBus localEventBus, int port) {
 		this.localEventBus = localEventBus;
 		this.port = port;
 		start();
@@ -47,9 +47,6 @@ public class EventBusReceiver {
 		}
 	}
 
-	/**
-	 * todo: need ack ack event?
-	 */
 	private void acknowledge(BroadcastEvent broadcastEvent, NetSocket connection) {
 		needAckEvents.put(broadcastEvent.getId(), broadcastEvent);
 		BroadcastEvent ackEvent = new BroadcastEvent();
