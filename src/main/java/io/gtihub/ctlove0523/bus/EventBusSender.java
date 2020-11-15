@@ -7,9 +7,9 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
-import io.github.ctlove0523.commons.network.Ips;
 import io.github.ctlove0523.commons.serialization.JacksonUtil;
 import io.github.ctlove0523.discovery.api.Instance;
 import io.github.ctlove0523.discovery.api.ServiceResolver;
@@ -77,31 +77,37 @@ public class EventBusSender {
 	public void initReceivers() {
 		List<Instance> instances = serviceResolver.resolve(serviceDomainName);
 		instances.stream()
-				.filter(new Predicate<Instance>() {
+				.map(new Function<Instance, String>() {
 					@Override
-					public boolean test(Instance instance) {
-						return !instance.getAddress().getIpv4().equals(Ips.getIpByNetworkInterfaceName("eth0").getHostAddress());
+					public String apply(Instance instance) {
+						return instance.getAddress().getIpv4();
 					}
-				}).forEach(new Consumer<Instance>() {
+				})
+				.filter(new Predicate<String>() {
+					@Override
+					public boolean test(String host) {
+						return !host.equals(IpUtils.getCurrentListenIp());
+					}
+				}).forEach(new Consumer<String>() {
 			@Override
-			public void accept(Instance instance) {
+			public void accept(String host) {
 				NetClient receiver = vertx.createNetClient();
-				receiver.connect(receiverPort, instance.getAddress().getIpv4(), new Handler<AsyncResult<NetSocket>>() {
+				receiver.connect(receiverPort, host, new Handler<AsyncResult<NetSocket>>() {
 					@Override
 					public void handle(AsyncResult<NetSocket> event) {
 						if (event.succeeded()) {
-							log.info("connect to receiver {} success", instance.getAddress().getIpv4());
-							receivers.put(instance.getAddress().getIpv4(), event.result());
+							log.info("connect to receiver {} success", host);
+							receivers.put(host, event.result());
 							event.result().handler(new Handler<Buffer>() {
 								@Override
 								public void handle(Buffer event) {
-
+									acknowledgeReceiverAck(event);
 								}
 							});
 						}
 						else {
-							log.warn("connect to receiver {} failed", instance.getAddress().getIpv4());
-							receivers.remove(instance.getAddress().getIpv4());
+							log.warn("connect to receiver {} failed", host);
+							receivers.remove(host);
 						}
 					}
 				});
@@ -110,6 +116,9 @@ public class EventBusSender {
 	}
 
 	private void acknowledgeReceiverAck(Buffer data) {
-
+		String jsonFormatData = data.toJson().toString();
+		BroadcastEvent broadcastEvent = JacksonUtil.json2Object(jsonFormatData, BroadcastEvent.class);
+		String receiverHost = broadcastEvent.getReceiverHost();
+		waitAckEvents.get(receiverHost).remove(broadcastEvent);
 	}
 }
