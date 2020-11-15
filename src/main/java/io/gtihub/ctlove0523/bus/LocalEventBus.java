@@ -1,5 +1,6 @@
 package io.gtihub.ctlove0523.bus;
 
+import org.greenrobot.eventbus.EventBus;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -8,6 +9,21 @@ import org.jetbrains.annotations.NotNull;
  * choose implement.
  */
 public interface LocalEventBus {
+
+	static LocalEventBus localEventBus(){
+		EventBus eventBus = EventBus.getDefault();
+		return new LocalEventBus() {
+			@Override
+			public void register(@NotNull Object subscriber) {
+				eventBus.register(subscriber);
+			}
+
+			@Override
+			public void post(@NotNull Object event) {
+				eventBus.post(event);
+			}
+		};
+	}
 
 	void register(@NotNull Object subscriber);
 

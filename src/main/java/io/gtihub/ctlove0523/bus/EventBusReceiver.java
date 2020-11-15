@@ -37,6 +37,10 @@ public class EventBusReceiver {
 		}, 0, 5, TimeUnit.SECONDS);
 	}
 
+	public void register(Object subscriber) {
+		localEventBus.register(subscriber);
+	}
+
 	private void handleReceivedEvent(Buffer data, String clientHost) {
 		String jsonFormatData = data.toJson().toString();
 		BroadcastEvent broadcastEvent = JacksonUtil.json2Object(jsonFormatData, BroadcastEvent.class);
