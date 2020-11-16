@@ -56,6 +56,7 @@ public class EventBusReceiver {
 		BroadcastEvent ackEvent = new BroadcastEvent();
 		ackEvent.setType(1);
 		ackEvent.setId(broadcastEvent.getId());
+		ackEvent.setReceiverHost(IpUtils.getCurrentListenIp());
 		connection.write(JacksonUtil.object2Json(ackEvent), new Handler<AsyncResult<Void>>() {
 			@Override
 			public void handle(AsyncResult<Void> event) {
@@ -95,6 +96,7 @@ public class EventBusReceiver {
 		server.connectHandler(new Handler<NetSocket>() {
 			@Override
 			public void handle(NetSocket socket) {
+				System.out.println("new connect income");
 				String clientHost = socket.remoteAddress().host();
 				clientConnections.put(clientHost, socket);
 				socket.closeHandler(new Handler<Void>() {
