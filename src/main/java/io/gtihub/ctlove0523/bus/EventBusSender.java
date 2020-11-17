@@ -24,9 +24,10 @@ import org.slf4j.LoggerFactory;
 
 public class EventBusSender {
 	private static final Logger log = LoggerFactory.getLogger(EventBusSender.class);
+	private static final int DEFAULT_SURVIVAL_TIME = 30 * 1000;
 	private static final int DEFAULT_PORT = 7160;
 	private final Vertx vertx = Vertx.vertx();
-	private String serviceDomainName;
+	private final String serviceDomainName;
 	private final ServiceResolver serviceResolver;
 	private final int receiverPort;
 	private final Map<String, NetSocket> receivers = new HashMap<>();
@@ -47,12 +48,20 @@ public class EventBusSender {
 	}
 
 	public void post(Object event) {
+		post(event, DEFAULT_SURVIVAL_TIME);
+	}
+
+	public void post(Object event, int survivalTime) {
+		Map<String, Object> headers = new HashMap<>(3);
+		headers.put(BroadcastEventHeaderKeys.BIRTHDAY, System.currentTimeMillis());
+		headers.put(BroadcastEventHeaderKeys.SURVIVAL_TIME, survivalTime);
 		BroadcastEvent broadcastEvent = new BroadcastEvent();
 		broadcastEvent.setId(UUID.randomUUID().toString());
 		broadcastEvent.setType(0);
 		broadcastEvent.setSenderHost(IpUtils.getCurrentListenIp());
 		broadcastEvent.setBody(JacksonUtil.object2Json(event));
 		broadcastEvent.setBodyClass(event.getClass());
+		broadcastEvent.setHeaders(headers);
 
 		localEventBus.post(event);
 		receivers.forEach(new BiConsumer<String, NetSocket>() {

@@ -49,6 +49,9 @@ public class EventBusReceiver {
 			localEventBus.post(localEvent);
 			acknowledge(broadcastEvent, clientConnections.get(clientHost));
 		}
+		else {
+			log.warn("event already dead");
+		}
 	}
 
 	private void acknowledge(BroadcastEvent broadcastEvent, NetSocket connection) {
@@ -61,7 +64,7 @@ public class EventBusReceiver {
 			@Override
 			public void handle(AsyncResult<Void> event) {
 				if (event.succeeded()) {
-					log.trace("{} event ack success",broadcastEvent.getId());
+					log.trace("{} event ack success", broadcastEvent.getId());
 					needAckEvents.remove(broadcastEvent.getId());
 				}
 			}
@@ -73,7 +76,9 @@ public class EventBusReceiver {
 	 * @param broadcastEvent 广播事件
 	 */
 	private boolean validBroadcastEvent(BroadcastEvent broadcastEvent) {
-		return true;
+		long deadTime = (long) broadcastEvent.getHeaders().get(BroadcastEventHeaderKeys.BIRTHDAY)
+				+ (int) broadcastEvent.getHeaders().get(BroadcastEventHeaderKeys.SURVIVAL_TIME);
+		return deadTime > System.currentTimeMillis();
 	}
 
 	private void start() {

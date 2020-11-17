@@ -16,6 +16,7 @@ public class EventBusSenderTest {
 	public void process(String event) {
 		System.out.println("process " + event);
 	}
+
 	public static void main(String[] args) throws Exception {
 		LocalEventBus eventBus = LocalEventBus.localEventBus();
 		eventBus.register(new EventBusSenderTest());
@@ -34,6 +35,6 @@ public class EventBusSenderTest {
 		}, 5432, eventBus);
 
 		TimeUnit.SECONDS.sleep(1);
-		sender.post("hello receiver");
+		sender.post("hello receiver", -2);
 	}
 }

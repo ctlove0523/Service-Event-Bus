@@ -10,7 +10,7 @@ import org.jetbrains.annotations.NotNull;
  */
 public interface LocalEventBus {
 
-	static LocalEventBus localEventBus(){
+	static LocalEventBus localEventBus() {
 		EventBus eventBus = EventBus.getDefault();
 		return new LocalEventBus() {
 			@Override

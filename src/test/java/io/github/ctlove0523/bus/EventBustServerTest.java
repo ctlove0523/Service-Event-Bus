@@ -9,6 +9,7 @@ public class EventBustServerTest {
 	public void process(String event) {
 		System.out.println("receiver process " + event);
 	}
+
 	public static void main(String[] args) {
 		LocalEventBus eventBus = LocalEventBus.localEventBus();
 		eventBus.register(new EventBustServerTest());
