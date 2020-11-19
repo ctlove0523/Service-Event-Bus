@@ -9,7 +9,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 
 import io.github.ctlove0523.commons.serialization.JacksonUtil;
 import io.github.ctlove0523.discovery.api.Instance;
@@ -141,28 +140,31 @@ public class EventBusSender {
 		waitAckEvents.get(receiverHost).remove(broadcastEvent);
 	}
 
+	/**
+	 * 对通过socket发送失败的事件进行重试。发功成功只是指事件通过socket写入成功，但是事件并不一定能被接收者
+	 * 接收到
+	 */
 	private void reSend() {
 		Map<String, List<BroadcastEvent>> snapshot = new HashMap<>(waitSendEvents);
-		snapshot.forEach((s, broadcastEvents) -> broadcastEvents.forEach(broadcastEvent -> receivers.get(s).write(JacksonUtil.object2Json(broadcastEvent), event -> {
-			if (event.succeeded()) {
-				waitSendEvents.get(s).remove(broadcastEvent);
-			}
-		})));
+		snapshot.forEach((receiverHost, broadcastEvents) -> broadcastEvents.stream()
+				.filter(broadcastEvent -> !broadcastEvent.isDead())
+				.forEach(broadcastEvent -> receivers.get(receiverHost)
+						.write(JacksonUtil.object2Json(broadcastEvent),
+								event -> {
+									if (event.succeeded()) {
+										waitSendEvents.get(receiverHost).remove(broadcastEvent);
+									}
+								})));
 	}
 
+	/**
+	 * 重发没有收到确认的事件
+	 */
 	private void reBroadcast() {
 		Map<String, List<BroadcastEvent>> snapshot = new HashMap<>(waitAckEvents);
 
-		snapshot.forEach(new BiConsumer<String, List<BroadcastEvent>>() {
-			@Override
-			public void accept(String s, List<BroadcastEvent> broadcastEvents) {
-				broadcastEvents.forEach(new Consumer<BroadcastEvent>() {
-					@Override
-					public void accept(BroadcastEvent broadcastEvent) {
-						receivers.get(s).write(JacksonUtil.object2Json(broadcastEvent));
-					}
-				});
-			}
-		});
+		snapshot.forEach((s, broadcastEvents) -> broadcastEvents.stream()
+				.filter(broadcastEvent -> !broadcastEvent.isDead())
+				.forEach(broadcastEvent -> receivers.get(s).write(JacksonUtil.object2Json(broadcastEvent))));
 	}
 }
