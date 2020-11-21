@@ -1,17 +1,23 @@
 package io.gtihub.ctlove0523.bus;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.ServiceLoader;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
+import io.github.ctlove0523.commons.Predications;
 import io.github.ctlove0523.commons.serialization.JacksonUtil;
 import io.github.ctlove0523.discovery.api.Instance;
+import io.github.ctlove0523.discovery.api.Order;
 import io.github.ctlove0523.discovery.api.ServiceResolver;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
@@ -43,22 +49,37 @@ public class EventBusSender {
 	 */
 	private final Map<String, List<BroadcastEvent>> waitAckEvents = new HashMap<>();
 
-	private ScheduledExecutorService workers = Executors.newScheduledThreadPool(3);
+	private final ScheduledExecutorService workers = Executors.newScheduledThreadPool(3);
 
 
-	public EventBusSender(String serviceDomainName, ServiceResolver serviceResolver, LocalEventBus localEventBus) {
-		this(serviceDomainName, serviceResolver, DEFAULT_PORT, localEventBus);
+	public EventBusSender(String serviceDomainName, LocalEventBus localEventBus) {
+		this(serviceDomainName, DEFAULT_PORT, localEventBus);
 	}
 
-	public EventBusSender(String serviceDomainName, ServiceResolver serviceResolver, int receiverPort, LocalEventBus localEventBus) {
+	public EventBusSender(String serviceDomainName, int receiverPort, LocalEventBus localEventBus) {
 		this.serviceDomainName = serviceDomainName;
-		this.serviceResolver = serviceResolver;
+		this.serviceResolver = findServiceResolver();
 		this.receiverPort = receiverPort;
 		this.localEventBus = localEventBus;
 		initReceivers();
 		workers.scheduleWithFixedDelay(this::initReceivers, 0L, 10L, TimeUnit.SECONDS);
 		workers.scheduleWithFixedDelay(this::reSend, 0L, 5L, TimeUnit.SECONDS);
 		workers.scheduleWithFixedDelay(this::reBroadcast, 0L, 5L, TimeUnit.SECONDS);
+	}
+
+	private ServiceResolver findServiceResolver() {
+		List<ServiceResolver> resolvers = new ArrayList<>();
+		ServiceLoader.load(ServiceResolver.class).forEach(new Consumer<ServiceResolver>() {
+			@Override
+			public void accept(ServiceResolver serviceResolver) {
+				resolvers.add(serviceResolver);
+			}
+		});
+		Predications.notEmpty(resolvers, "must has one implement of ServiceResolver");
+
+		resolvers.sort(Comparator.comparingInt(Order::getOrder));
+
+		return resolvers.get(0);
 	}
 
 	public void post(Object event) {
