@@ -19,6 +19,7 @@ import io.github.ctlove0523.commons.serialization.JacksonUtil;
 import io.github.ctlove0523.discovery.api.Instance;
 import io.github.ctlove0523.discovery.api.Order;
 import io.github.ctlove0523.discovery.api.ServiceResolver;
+import io.gtihub.ctlove0523.bus.repository.WaitAckEventRepository;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
@@ -38,6 +39,7 @@ public class EventBusSender {
 	private final int receiverPort;
 	private final Map<String, NetSocket> receivers = new HashMap<>();
 	private final LocalEventBus localEventBus;
+	private WaitAckEventRepository repository;
 
 	/**
 	 * 等待发送的事件
@@ -53,14 +55,16 @@ public class EventBusSender {
 
 
 	public EventBusSender(String serviceDomainName, LocalEventBus localEventBus) {
-		this(serviceDomainName, DEFAULT_PORT, localEventBus);
+		this(serviceDomainName, DEFAULT_PORT, localEventBus, null);
 	}
 
-	public EventBusSender(String serviceDomainName, int receiverPort, LocalEventBus localEventBus) {
+	public EventBusSender(String serviceDomainName, int receiverPort, LocalEventBus localEventBus,
+			WaitAckEventRepository repository) {
 		this.serviceDomainName = serviceDomainName;
 		this.serviceResolver = findServiceResolver();
 		this.receiverPort = receiverPort;
 		this.localEventBus = localEventBus;
+		this.repository = repository;
 		initReceivers();
 		workers.scheduleWithFixedDelay(this::initReceivers, 0L, 10L, TimeUnit.SECONDS);
 		workers.scheduleWithFixedDelay(this::reSend, 0L, 5L, TimeUnit.SECONDS);
@@ -101,34 +105,43 @@ public class EventBusSender {
 		localEventBus.post(event);
 		receivers.forEach(new BiConsumer<String, NetSocket>() {
 			@Override
-			public void accept(String s, NetSocket socket) {
+			public void accept(String receiverHost, NetSocket socket) {
 				// 存储已经发送但是没有被确认的事件
-				List<BroadcastEvent> broadcastEventList = waitAckEvents.get(s);
-				if (broadcastEventList == null) {
-					broadcastEventList = new LinkedList<>();
-				}
-				broadcastEventList.add(broadcastEvent);
-				waitAckEvents.put(s, broadcastEventList);
+				saveWaitAckEvents(receiverHost, broadcastEvent);
 
 				// 存储已经发送但是还没有发送成功的事件
-				List<BroadcastEvent> waitSendEventList = waitSendEvents.get(s);
+				List<BroadcastEvent> waitSendEventList = waitSendEvents.get(receiverHost);
 				if (waitSendEventList == null) {
 					waitSendEventList = new LinkedList<>();
 				}
 				waitSendEventList.add(broadcastEvent);
-				waitSendEvents.put(s, waitSendEventList);
+				waitSendEvents.put(receiverHost, waitSendEventList);
 
 				// 通过socket广播事件
 				socket.write(JacksonUtil.object2Json(broadcastEvent), new Handler<AsyncResult<Void>>() {
 					@Override
 					public void handle(AsyncResult<Void> event) {
 						if (event.succeeded()) {
-							waitSendEvents.get(s).remove(broadcastEvent);
+							waitSendEvents.get(receiverHost).remove(broadcastEvent);
 						}
 					}
 				});
 			}
 		});
+	}
+
+	private void saveWaitAckEvents(String receiverHost, BroadcastEvent event) {
+		List<BroadcastEvent> broadcastEventList = waitAckEvents.get(receiverHost);
+		if (broadcastEventList == null) {
+			broadcastEventList = new LinkedList<>();
+		}
+		broadcastEventList.add(event);
+		waitAckEvents.put(receiverHost, broadcastEventList);
+
+		if (repository != null) {
+			String key = receiverHost + event.getId();
+			repository.save(key, event);
+		}
 	}
 
 
@@ -159,6 +172,9 @@ public class EventBusSender {
 		BroadcastEvent broadcastEvent = JacksonUtil.json2Object(jsonFormatData, BroadcastEvent.class);
 		String receiverHost = broadcastEvent.getReceiverHost();
 		waitAckEvents.get(receiverHost).remove(broadcastEvent);
+		if (repository != null) {
+			repository.deleteOne(receiverHost + broadcastEvent.getId());
+		}
 	}
 
 	/**
