@@ -2,9 +2,10 @@ package io.github.ctlove0523.bus;
 
 import io.gtihub.ctlove0523.bus.EventBusReceiver;
 import io.gtihub.ctlove0523.bus.LocalEventBus;
+import io.gtihub.ctlove0523.bus.repository.InMemoryWaitSendAckEventRepository;
 import org.greenrobot.eventbus.Subscribe;
 
-public class EventBustServerTest {
+public class EventBustReceiverTest {
 	@Subscribe
 	public void process(String event) {
 		System.out.println("receiver process " + event);
@@ -12,9 +13,9 @@ public class EventBustServerTest {
 
 	public static void main(String[] args) {
 		LocalEventBus eventBus = LocalEventBus.localEventBus();
-		eventBus.register(new EventBustServerTest());
+		eventBus.register(new EventBustReceiverTest());
 
 
-		EventBusReceiver receiver = new EventBusReceiver(eventBus, 5432);
+		EventBusReceiver receiver = new EventBusReceiver(eventBus, 5432,new InMemoryWaitSendAckEventRepository());
 	}
 }

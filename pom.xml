@@ -49,11 +49,16 @@
 			<artifactId>eventbus</artifactId>
 			<version>3.2.0</version>
 		</dependency>
-<!--		<dependency>-->
-<!--			<groupId>org.springframework.boot</groupId>-->
-<!--			<artifactId>spring-boot-starter-logging</artifactId>-->
-<!--			<version>2.3.4.RELEASE</version>-->
-<!--		</dependency>-->
+		<dependency>
+			<groupId>io.projectreactor</groupId>
+			<artifactId>reactor-core</artifactId>
+			<version>3.3.10.RELEASE</version>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-logging</artifactId>
+			<version>2.3.4.RELEASE</version>
+		</dependency>
 
 	</dependencies>
 

@@ -6,8 +6,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 import io.github.ctlove0523.commons.serialization.JacksonUtil;
+import io.gtihub.ctlove0523.bus.repository.WaitSendAckEventRepository;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
@@ -24,16 +26,22 @@ public class EventBusReceiver {
 	private final AtomicBoolean stared = new AtomicBoolean(false);
 	private final int port;
 	private final Map<String, NetSocket> clientConnections = new HashMap<>();
-	private final Map<String, BroadcastEvent> needAckEvents = new HashMap<>();
+	private WaitSendAckEventRepository waitSendAckEventRepository;
 	private ScheduledExecutorService worker = Executors.newScheduledThreadPool(1);
 
-	public EventBusReceiver(LocalEventBus localEventBus, int port) {
+	public EventBusReceiver(LocalEventBus localEventBus, int port,WaitSendAckEventRepository repository) {
 		this.localEventBus = localEventBus;
 		this.port = port;
+		this.waitSendAckEventRepository = repository;
 		start();
 		worker.scheduleWithFixedDelay(() -> {
-			Map<String, BroadcastEvent> snapshot = new HashMap<>(needAckEvents);
-			snapshot.forEach((s, broadcastEvent) -> acknowledge(broadcastEvent, clientConnections.get(s)));
+			waitSendAckEventRepository.findAll()
+					.subscribe(new Consumer<BroadcastEvent>() {
+						@Override
+						public void accept(BroadcastEvent event) {
+							acknowledge(event, clientConnections.get(event.getSenderHost()));
+						}
+					});
 		}, 0, 5, TimeUnit.SECONDS);
 	}
 
@@ -55,7 +63,8 @@ public class EventBusReceiver {
 	}
 
 	private void acknowledge(BroadcastEvent broadcastEvent, NetSocket connection) {
-		needAckEvents.put(broadcastEvent.getId(), broadcastEvent);
+		String savedKey = broadcastEvent.getSenderHost() + "&" + broadcastEvent.getId();
+		waitSendAckEventRepository.save(savedKey, broadcastEvent);
 		BroadcastEvent ackEvent = new BroadcastEvent();
 		ackEvent.setType(1);
 		ackEvent.setId(broadcastEvent.getId());
@@ -64,8 +73,8 @@ public class EventBusReceiver {
 			@Override
 			public void handle(AsyncResult<Void> event) {
 				if (event.succeeded()) {
-					log.trace("{} event ack success", broadcastEvent.getId());
-					needAckEvents.remove(broadcastEvent.getId());
+					log.info("{} event ack success", broadcastEvent.getId());
+					waitSendAckEventRepository.delete(savedKey);
 				}
 			}
 		});
@@ -73,12 +82,15 @@ public class EventBusReceiver {
 
 	/**
 	 * 校验broadcast event是否合法
+	 *
 	 * @param broadcastEvent 广播事件
 	 */
 	private boolean validBroadcastEvent(BroadcastEvent broadcastEvent) {
 		long deadTime = (long) broadcastEvent.getHeaders().get(BroadcastEventHeaderKeys.BIRTHDAY)
 				+ (int) broadcastEvent.getHeaders().get(BroadcastEventHeaderKeys.SURVIVAL_TIME);
-		return deadTime > System.currentTimeMillis();
+		boolean flag = deadTime > System.currentTimeMillis();
+		System.out.println("flag " + flag);
+		return flag;
 	}
 
 	private void start() {

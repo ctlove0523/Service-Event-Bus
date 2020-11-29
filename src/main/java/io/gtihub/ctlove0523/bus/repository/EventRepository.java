@@ -1,20 +1,23 @@
 package io.gtihub.ctlove0523.bus.repository;
 
 import java.util.Iterator;
+import java.util.List;
 
 import io.gtihub.ctlove0523.bus.BroadcastEvent;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 public interface EventRepository {
 
 	void save(String key, BroadcastEvent event);
 
-	void findOne(String key);
+	Mono<BroadcastEvent> find(String key);
 
-	void deleteOne(String key);
+	void delete(String key);
 
-	Iterator<BroadcastEvent> findMany(Iterator<String> keys);
+	Flux<BroadcastEvent> findMany(List<String> keys);
 
-	Iterator<BroadcastEvent> findAll();
+	Flux<BroadcastEvent> findAll();
 
-	void deleteMany(Iterator<String> keys);
+	void deleteMany(List<String> keys);
 }

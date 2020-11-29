@@ -1,6 +1,7 @@
 package io.gtihub.ctlove0523.bus;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -17,6 +18,7 @@ import java.util.function.Consumer;
 import io.github.ctlove0523.commons.Predications;
 import io.github.ctlove0523.commons.serialization.JacksonUtil;
 import io.github.ctlove0523.discovery.api.Instance;
+import io.github.ctlove0523.discovery.api.InstanceAddress;
 import io.github.ctlove0523.discovery.api.Order;
 import io.github.ctlove0523.discovery.api.ServiceResolver;
 import io.gtihub.ctlove0523.bus.repository.WaitAckEventRepository;
@@ -46,11 +48,6 @@ public class EventBusSender {
 	 */
 	private final Map<String, List<BroadcastEvent>> waitSendEvents = new HashMap<>();
 
-	/**
-	 * 等待接收者确认的事件，key为接收者的唯一标识
-	 */
-	private final Map<String, List<BroadcastEvent>> waitAckEvents = new HashMap<>();
-
 	private final ScheduledExecutorService workers = Executors.newScheduledThreadPool(3);
 
 
@@ -61,7 +58,19 @@ public class EventBusSender {
 	public EventBusSender(String serviceDomainName, int receiverPort, LocalEventBus localEventBus,
 			WaitAckEventRepository repository) {
 		this.serviceDomainName = serviceDomainName;
-		this.serviceResolver = findServiceResolver();
+		this.serviceResolver = new ServiceResolver() {
+			@Override
+			public List<Instance> resolve(String s) {
+				InstanceAddress address = new InstanceAddress("127.0.0.1");
+				Instance instance = new Instance(address);
+				return Collections.singletonList(instance);
+			}
+
+			@Override
+			public int getOrder() {
+				return 0;
+			}
+		};
 		this.receiverPort = receiverPort;
 		this.localEventBus = localEventBus;
 		this.repository = repository;
@@ -118,6 +127,7 @@ public class EventBusSender {
 				waitSendEvents.put(receiverHost, waitSendEventList);
 
 				// 通过socket广播事件
+				log.info("send content {}", JacksonUtil.object2Json(broadcastEvent));
 				socket.write(JacksonUtil.object2Json(broadcastEvent), new Handler<AsyncResult<Void>>() {
 					@Override
 					public void handle(AsyncResult<Void> event) {
@@ -131,17 +141,9 @@ public class EventBusSender {
 	}
 
 	private void saveWaitAckEvents(String receiverHost, BroadcastEvent event) {
-		List<BroadcastEvent> broadcastEventList = waitAckEvents.get(receiverHost);
-		if (broadcastEventList == null) {
-			broadcastEventList = new LinkedList<>();
-		}
-		broadcastEventList.add(event);
-		waitAckEvents.put(receiverHost, broadcastEventList);
-
-		if (repository != null) {
-			String key = receiverHost + event.getId();
-			repository.save(key, event);
-		}
+		String savedKey = receiverHost + "&" + event.getId();
+		event.setReceiverHost(receiverHost);
+		repository.save(savedKey, event);
 	}
 
 
@@ -171,10 +173,7 @@ public class EventBusSender {
 		String jsonFormatData = data.toJson().toString();
 		BroadcastEvent broadcastEvent = JacksonUtil.json2Object(jsonFormatData, BroadcastEvent.class);
 		String receiverHost = broadcastEvent.getReceiverHost();
-		waitAckEvents.get(receiverHost).remove(broadcastEvent);
-		if (repository != null) {
-			repository.deleteOne(receiverHost + broadcastEvent.getId());
-		}
+		repository.delete(receiverHost + "&" + broadcastEvent.getId());
 	}
 
 	/**
@@ -184,7 +183,7 @@ public class EventBusSender {
 	private void reSend() {
 		Map<String, List<BroadcastEvent>> snapshot = new HashMap<>(waitSendEvents);
 		snapshot.forEach((receiverHost, broadcastEvents) -> broadcastEvents.stream()
-				.filter(broadcastEvent -> !broadcastEvent.isDead())
+				.filter(broadcastEvent -> !broadcastEvent.eventIsDeat())
 				.forEach(broadcastEvent -> receivers.get(receiverHost)
 						.write(JacksonUtil.object2Json(broadcastEvent),
 								event -> {
@@ -195,13 +194,12 @@ public class EventBusSender {
 	}
 
 	/**
-	 * 重发没有收到确认的事件
+	 * 重发没有收到确认的事件,从repository这种获取
 	 */
 	private void reBroadcast() {
-		Map<String, List<BroadcastEvent>> snapshot = new HashMap<>(waitAckEvents);
-
-		snapshot.forEach((s, broadcastEvents) -> broadcastEvents.stream()
-				.filter(broadcastEvent -> !broadcastEvent.isDead())
-				.forEach(broadcastEvent -> receivers.get(s).write(JacksonUtil.object2Json(broadcastEvent))));
+		repository.findAll()
+				.filter(event -> !event.eventIsDeat())
+				.subscribe(event -> receivers.get(event.getReceiverHost())
+						.write(JacksonUtil.object2Json(event)));
 	}
 }

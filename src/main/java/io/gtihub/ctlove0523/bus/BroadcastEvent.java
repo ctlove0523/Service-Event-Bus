@@ -20,7 +20,7 @@ public class BroadcastEvent implements Serializable {
 	private String body;
 	private Class<?> bodyClass;
 
-	public boolean isDead() {
+	public boolean eventIsDeat() {
 		long deadTime = (long) headers.get(BroadcastEventHeaderKeys.BIRTHDAY)
 				+ (int) headers.get(BroadcastEventHeaderKeys.SURVIVAL_TIME);
 		return deadTime > System.currentTimeMillis();
