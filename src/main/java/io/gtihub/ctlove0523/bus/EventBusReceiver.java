@@ -29,7 +29,7 @@ public class EventBusReceiver {
 	private WaitSendAckEventRepository waitSendAckEventRepository;
 	private ScheduledExecutorService worker = Executors.newScheduledThreadPool(1);
 
-	public EventBusReceiver(LocalEventBus localEventBus, int port,WaitSendAckEventRepository repository) {
+	public EventBusReceiver(LocalEventBus localEventBus, int port, WaitSendAckEventRepository repository) {
 		this.localEventBus = localEventBus;
 		this.port = port;
 		this.waitSendAckEventRepository = repository;
@@ -88,9 +88,7 @@ public class EventBusReceiver {
 	private boolean validBroadcastEvent(BroadcastEvent broadcastEvent) {
 		long deadTime = (long) broadcastEvent.getHeaders().get(BroadcastEventHeaderKeys.BIRTHDAY)
 				+ (int) broadcastEvent.getHeaders().get(BroadcastEventHeaderKeys.SURVIVAL_TIME);
-		boolean flag = deadTime > System.currentTimeMillis();
-		System.out.println("flag " + flag);
-		return flag;
+		return deadTime > System.currentTimeMillis();
 	}
 
 	private void start() {
@@ -113,7 +111,6 @@ public class EventBusReceiver {
 		server.connectHandler(new Handler<NetSocket>() {
 			@Override
 			public void handle(NetSocket socket) {
-				System.out.println("new connect income");
 				String clientHost = socket.remoteAddress().host();
 				clientConnections.put(clientHost, socket);
 				socket.closeHandler(new Handler<Void>() {

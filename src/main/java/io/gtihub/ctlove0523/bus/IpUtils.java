@@ -5,7 +5,6 @@ import io.github.ctlove0523.commons.network.Ips;
 public class IpUtils {
 
 	public static String getCurrentListenIp() {
-		return "128.0.0.1";
-//		return Ips.getIpByNetworkInterfaceName("eth0").getHostAddress();
+		return Ips.getIpByNetworkInterfaceName("eth0").getHostAddress();
 	}
 }

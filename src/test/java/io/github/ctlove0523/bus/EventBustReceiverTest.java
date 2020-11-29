@@ -16,6 +16,6 @@ public class EventBustReceiverTest {
 		eventBus.register(new EventBustReceiverTest());
 
 
-		EventBusReceiver receiver = new EventBusReceiver(eventBus, 5432,new InMemoryWaitSendAckEventRepository());
+		EventBusReceiver receiver = new EventBusReceiver(eventBus, 5432, new InMemoryWaitSendAckEventRepository());
 	}
 }

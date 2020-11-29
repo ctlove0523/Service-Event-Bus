@@ -61,7 +61,7 @@ public class EventBusSender {
 		this.serviceResolver = new ServiceResolver() {
 			@Override
 			public List<Instance> resolve(String s) {
-				InstanceAddress address = new InstanceAddress("127.0.0.1");
+				InstanceAddress address = new InstanceAddress("192.168.2.103");
 				Instance instance = new Instance(address);
 				return Collections.singletonList(instance);
 			}
@@ -142,6 +142,7 @@ public class EventBusSender {
 
 	private void saveWaitAckEvents(String receiverHost, BroadcastEvent event) {
 		String savedKey = receiverHost + "&" + event.getId();
+		log.info("saveWaitAckEvents: key = {}", savedKey);
 		event.setReceiverHost(receiverHost);
 		repository.save(savedKey, event);
 	}
@@ -152,6 +153,7 @@ public class EventBusSender {
 		instances.stream()
 				.map(instance -> instance.getAddress().getIpv4())
 				.filter(host -> !host.equals(IpUtils.getCurrentListenIp()))
+				.filter(s -> !receivers.containsKey(s))
 				.forEach(host -> {
 					NetClient receiver = vertx.createNetClient();
 					receiver.connect(receiverPort, host, event -> {
@@ -173,7 +175,9 @@ public class EventBusSender {
 		String jsonFormatData = data.toJson().toString();
 		BroadcastEvent broadcastEvent = JacksonUtil.json2Object(jsonFormatData, BroadcastEvent.class);
 		String receiverHost = broadcastEvent.getReceiverHost();
-		repository.delete(receiverHost + "&" + broadcastEvent.getId());
+		String deleteKey = receiverHost + "&" + broadcastEvent.getId();
+		log.info("saveWaitAckEvents: key = {}", deleteKey);
+		repository.delete(deleteKey);
 	}
 
 	/**
@@ -184,13 +188,16 @@ public class EventBusSender {
 		Map<String, List<BroadcastEvent>> snapshot = new HashMap<>(waitSendEvents);
 		snapshot.forEach((receiverHost, broadcastEvents) -> broadcastEvents.stream()
 				.filter(broadcastEvent -> !broadcastEvent.eventIsDeat())
-				.forEach(broadcastEvent -> receivers.get(receiverHost)
-						.write(JacksonUtil.object2Json(broadcastEvent),
-								event -> {
-									if (event.succeeded()) {
-										waitSendEvents.get(receiverHost).remove(broadcastEvent);
-									}
-								})));
+				.forEach(broadcastEvent -> {
+					receivers.get(receiverHost)
+							.write(JacksonUtil.object2Json(broadcastEvent),
+									event -> {
+										if (event.succeeded()) {
+											waitSendEvents.get(receiverHost).remove(broadcastEvent);
+										}
+									});
+				}));
+
 	}
 
 	/**
