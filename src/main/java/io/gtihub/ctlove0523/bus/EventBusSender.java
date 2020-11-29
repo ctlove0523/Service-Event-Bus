@@ -1,7 +1,6 @@
 package io.gtihub.ctlove0523.bus;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -18,7 +17,6 @@ import java.util.function.Consumer;
 import io.github.ctlove0523.commons.Predications;
 import io.github.ctlove0523.commons.serialization.JacksonUtil;
 import io.github.ctlove0523.discovery.api.Instance;
-import io.github.ctlove0523.discovery.api.InstanceAddress;
 import io.github.ctlove0523.discovery.api.Order;
 import io.github.ctlove0523.discovery.api.ServiceResolver;
 import io.gtihub.ctlove0523.bus.repository.WaitAckEventRepository;
@@ -58,19 +56,7 @@ public class EventBusSender {
 	public EventBusSender(String serviceDomainName, int receiverPort, LocalEventBus localEventBus,
 			WaitAckEventRepository repository) {
 		this.serviceDomainName = serviceDomainName;
-		this.serviceResolver = new ServiceResolver() {
-			@Override
-			public List<Instance> resolve(String s) {
-				InstanceAddress address = new InstanceAddress("192.168.2.103");
-				Instance instance = new Instance(address);
-				return Collections.singletonList(instance);
-			}
-
-			@Override
-			public int getOrder() {
-				return 0;
-			}
-		};
+		this.serviceResolver = findServiceResolver();
 		this.receiverPort = receiverPort;
 		this.localEventBus = localEventBus;
 		this.repository = repository;
