@@ -56,7 +56,7 @@ public class MessageHeaders implements Map<String, Object>, Serializable {
 	}
 
 	public int getType() {
-		return get(TYPE, int.class);
+		return get(TYPE, Integer.class);
 	}
 
 	public <T> Class<T> getPayloadType() {
