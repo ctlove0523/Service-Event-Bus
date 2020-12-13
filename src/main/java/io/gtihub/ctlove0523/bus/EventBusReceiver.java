@@ -9,39 +9,42 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 import io.github.ctlove0523.commons.serialization.JacksonUtil;
-import io.gtihub.ctlove0523.bus.repository.WaitSendAckEventRepository;
+import io.gtihub.ctlove0523.bus.repository.WaitSendAckMessageRepository;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.net.NetServer;
 import io.vertx.core.net.NetSocket;
+import jdk.internal.org.objectweb.asm.TypeReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class EventBusReceiver {
+public class EventBusReceiver<T> {
 	private static final Logger log = LoggerFactory.getLogger(EventBusReceiver.class);
 	private final Vertx vertx = Vertx.vertx();
 	private final LocalEventBus localEventBus;
 	private final AtomicBoolean stared = new AtomicBoolean(false);
 	private final int port;
 	private final Map<String, NetSocket> clientConnections = new HashMap<>();
-	private WaitSendAckEventRepository waitSendAckEventRepository;
+	private WaitSendAckMessageRepository waitSendAckEventRepository;
 	private ScheduledExecutorService worker = Executors.newScheduledThreadPool(1);
 
-	public EventBusReceiver(LocalEventBus localEventBus, int port, WaitSendAckEventRepository repository) {
+	public EventBusReceiver(LocalEventBus localEventBus, int port, WaitSendAckMessageRepository repository) {
 		this.localEventBus = localEventBus;
 		this.port = port;
 		this.waitSendAckEventRepository = repository;
 		start();
-		worker.scheduleWithFixedDelay(() -> {
-			waitSendAckEventRepository.findAll()
-					.subscribe(new Consumer<BroadcastEvent>() {
-						@Override
-						public void accept(BroadcastEvent event) {
-							acknowledge(event, clientConnections.get(event.getSenderHost()));
-						}
-					});
+		worker.scheduleWithFixedDelay(new Runnable() {
+			@Override
+			public void run() {
+				repository.findAll().subscribe(new Consumer<Message<Object>>() {
+					@Override
+					public void accept(Message<Object> objectMessage) {
+						acknowledge((Message<T>) objectMessage, clientConnections.get(objectMessage.getHeaders().getReceiver()));
+					}
+				});
+			}
 		}, 0, 5, TimeUnit.SECONDS);
 	}
 
@@ -51,29 +54,29 @@ public class EventBusReceiver {
 
 	private void handleReceivedEvent(Buffer data, String clientHost) {
 		String jsonFormatData = data.toJson().toString();
-		BroadcastEvent broadcastEvent = JacksonUtil.json2Object(jsonFormatData, BroadcastEvent.class);
-		if (validBroadcastEvent(broadcastEvent)) {
-			Object localEvent = JacksonUtil.json2Object(broadcastEvent.getBody(), broadcastEvent.getBodyClass());
+		Message<T> message = JacksonUtil.json2Object(jsonFormatData, Message.class);
+		if (validBroadcastEvent(message)) {
+			Object localEvent = JacksonUtil.json2Object((String) message.getPayload(), message.getHeaders().getPayloadType());
 			localEventBus.post(localEvent);
-			acknowledge(broadcastEvent, clientConnections.get(clientHost));
+			acknowledge(message, clientConnections.get(clientHost));
 		}
 		else {
 			log.warn("event already dead");
 		}
 	}
 
-	private void acknowledge(BroadcastEvent broadcastEvent, NetSocket connection) {
-		String savedKey = broadcastEvent.getSenderHost() + "&" + broadcastEvent.getId();
-		waitSendAckEventRepository.save(savedKey, broadcastEvent);
-		BroadcastEvent ackEvent = new BroadcastEvent();
-		ackEvent.setType(1);
-		ackEvent.setId(broadcastEvent.getId());
-		ackEvent.setReceiverHost(IpUtils.getCurrentListenIp());
-		connection.write(JacksonUtil.object2Json(ackEvent), new Handler<AsyncResult<Void>>() {
+	private void acknowledge(Message<T> message, NetSocket connection) {
+		String savedKey = message.getHeaders().getSender() + "&" + message.getHeaders().getId();
+		waitSendAckEventRepository.save(savedKey, message);
+		Message<T> ackMessage = MessageBuilder.fromMessage(message)
+				.setHeader(MessageHeaders.TYPE, 1)
+				.setHeader(MessageHeaders.RECEIVER, IpUtils.getCurrentListenIp())
+				.build();
+		connection.write(JacksonUtil.object2Json(message), new Handler<AsyncResult<Void>>() {
 			@Override
 			public void handle(AsyncResult<Void> event) {
 				if (event.succeeded()) {
-					log.info("{} event ack success", broadcastEvent.getId());
+					log.info("{} event ack success", message.getHeaders().getId());
 					waitSendAckEventRepository.delete(savedKey);
 				}
 			}
@@ -85,10 +88,8 @@ public class EventBusReceiver {
 	 *
 	 * @param broadcastEvent 广播事件
 	 */
-	private boolean validBroadcastEvent(BroadcastEvent broadcastEvent) {
-		long deadTime = (long) broadcastEvent.getHeaders().get(BroadcastEventHeaderKeys.BIRTHDAY)
-				+ (int) broadcastEvent.getHeaders().get(BroadcastEventHeaderKeys.SURVIVAL_TIME);
-		return deadTime > System.currentTimeMillis();
+	private boolean validBroadcastEvent(Message<T> broadcastEvent) {
+		return true;
 	}
 
 	private void start() {

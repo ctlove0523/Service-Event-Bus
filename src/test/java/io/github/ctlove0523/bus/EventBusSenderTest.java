@@ -4,7 +4,7 @@ import java.util.concurrent.TimeUnit;
 
 import io.gtihub.ctlove0523.bus.EventBusSender;
 import io.gtihub.ctlove0523.bus.LocalEventBus;
-import io.gtihub.ctlove0523.bus.repository.InMemoryWaitAckEventRepository;
+import io.gtihub.ctlove0523.bus.repository.InMemoryWaitAckMessageRepository;
 import org.greenrobot.eventbus.Subscribe;
 
 public class EventBusSenderTest {
@@ -16,7 +16,7 @@ public class EventBusSenderTest {
 	public static void main(String[] args) throws Exception {
 		LocalEventBus eventBus = LocalEventBus.localEventBus();
 		eventBus.register(new EventBusSenderTest());
-		EventBusSender sender = new EventBusSender("TEST", 5432, eventBus, new InMemoryWaitAckEventRepository());
+		EventBusSender sender = new EventBusSender("TEST", 5432, eventBus, new InMemoryWaitAckMessageRepository());
 
 		TimeUnit.SECONDS.sleep(1);
 		sender.post("hello receiver", 10 * 1000);

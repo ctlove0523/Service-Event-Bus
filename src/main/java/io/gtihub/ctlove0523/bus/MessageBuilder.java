@@ -54,6 +54,10 @@ public class MessageBuilder<T> {
 		return this;
 	}
 
+	public Message<T> build() {
+		return new SimpleMessage<>(payload, headers);
+	}
+
 
 	public static <T> MessageBuilder<T> fromMessage(Message<T> message) {
 		return new MessageBuilder<>(message);

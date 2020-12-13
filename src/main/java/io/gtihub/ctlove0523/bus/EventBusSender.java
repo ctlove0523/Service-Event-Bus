@@ -19,7 +19,7 @@ import io.github.ctlove0523.commons.serialization.JacksonUtil;
 import io.github.ctlove0523.discovery.api.Instance;
 import io.github.ctlove0523.discovery.api.Order;
 import io.github.ctlove0523.discovery.api.ServiceResolver;
-import io.gtihub.ctlove0523.bus.repository.WaitAckEventRepository;
+import io.gtihub.ctlove0523.bus.repository.WaitAckMessageRepository;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
@@ -29,7 +29,7 @@ import io.vertx.core.net.NetSocket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class EventBusSender {
+public class EventBusSender<T> {
 	private static final Logger log = LoggerFactory.getLogger(EventBusSender.class);
 	private static final int DEFAULT_SURVIVAL_TIME = 30 * 1000;
 	private static final int DEFAULT_PORT = 7160;
@@ -39,12 +39,12 @@ public class EventBusSender {
 	private final int receiverPort;
 	private final Map<String, NetSocket> receivers = new HashMap<>();
 	private final LocalEventBus localEventBus;
-	private WaitAckEventRepository repository;
+	private WaitAckMessageRepository repository;
 
 	/**
 	 * 等待发送的事件
 	 */
-	private final Map<String, List<BroadcastEvent>> waitSendEvents = new HashMap<>();
+	private final Map<String, List<Message<T>>> waitSendEvents = new HashMap<>();
 
 	private final ScheduledExecutorService workers = Executors.newScheduledThreadPool(3);
 
@@ -54,19 +54,24 @@ public class EventBusSender {
 	}
 
 	public EventBusSender(String serviceDomainName, int receiverPort, LocalEventBus localEventBus,
-			WaitAckEventRepository repository) {
+			WaitAckMessageRepository repository) {
+		this(serviceDomainName, findServiceResolver(), receiverPort, localEventBus, repository);
+	}
+
+	public EventBusSender(String serviceDomainName, ServiceResolver serviceResolver, int receiverPort, LocalEventBus localEventBus, WaitAckMessageRepository repository) {
 		this.serviceDomainName = serviceDomainName;
-		this.serviceResolver = findServiceResolver();
+		this.serviceResolver = serviceResolver;
 		this.receiverPort = receiverPort;
 		this.localEventBus = localEventBus;
 		this.repository = repository;
-		initReceivers();
+
+		this.initReceivers();
 		workers.scheduleWithFixedDelay(this::initReceivers, 0L, 10L, TimeUnit.SECONDS);
 		workers.scheduleWithFixedDelay(this::reSend, 0L, 5L, TimeUnit.SECONDS);
 		workers.scheduleWithFixedDelay(this::reBroadcast, 0L, 5L, TimeUnit.SECONDS);
 	}
 
-	private ServiceResolver findServiceResolver() {
+	private static ServiceResolver findServiceResolver() {
 		List<ServiceResolver> resolvers = new ArrayList<>();
 		ServiceLoader.load(ServiceResolver.class).forEach(new Consumer<ServiceResolver>() {
 			@Override
@@ -86,39 +91,34 @@ public class EventBusSender {
 	}
 
 	public void post(Object event, int survivalTime) {
-		Map<String, Object> headers = new HashMap<>(3);
-		headers.put(BroadcastEventHeaderKeys.BIRTHDAY, System.currentTimeMillis());
-		headers.put(BroadcastEventHeaderKeys.SURVIVAL_TIME, survivalTime);
-		BroadcastEvent broadcastEvent = new BroadcastEvent();
-		broadcastEvent.setId(UUID.randomUUID().toString());
-		broadcastEvent.setType(0);
-		broadcastEvent.setSenderHost(IpUtils.getCurrentListenIp());
-		broadcastEvent.setBody(JacksonUtil.object2Json(event));
-		broadcastEvent.setBodyClass(event.getClass());
-		broadcastEvent.setHeaders(headers);
+		Message<T> message = MessageBuilder.withPayload((T)event)
+				.setHeader(MessageHeaders.ID, UUID.randomUUID().toString())
+				.setHeader(MessageHeaders.TYPE,1)
+				.setHeader(MessageHeaders.SENDER,IpUtils.getCurrentListenIp())
+				.build();
 
 		localEventBus.post(event);
 		receivers.forEach(new BiConsumer<String, NetSocket>() {
 			@Override
 			public void accept(String receiverHost, NetSocket socket) {
 				// 存储已经发送但是没有被确认的事件
-				saveWaitAckEvents(receiverHost, broadcastEvent);
+				saveWaitAckEvents(receiverHost, message);
 
 				// 存储已经发送但是还没有发送成功的事件
-				List<BroadcastEvent> waitSendEventList = waitSendEvents.get(receiverHost);
+				List<Message<T>> waitSendEventList = waitSendEvents.get(receiverHost);
 				if (waitSendEventList == null) {
 					waitSendEventList = new LinkedList<>();
 				}
-				waitSendEventList.add(broadcastEvent);
+				waitSendEventList.add(message);
 				waitSendEvents.put(receiverHost, waitSendEventList);
 
 				// 通过socket广播事件
-				log.info("send content {}", JacksonUtil.object2Json(broadcastEvent));
-				socket.write(JacksonUtil.object2Json(broadcastEvent), new Handler<AsyncResult<Void>>() {
+				log.info("send content {}", JacksonUtil.object2Json(message));
+				socket.write(JacksonUtil.object2Json(message), new Handler<AsyncResult<Void>>() {
 					@Override
 					public void handle(AsyncResult<Void> event) {
 						if (event.succeeded()) {
-							waitSendEvents.get(receiverHost).remove(broadcastEvent);
+							waitSendEvents.get(receiverHost).remove(message);
 						}
 					}
 				});
@@ -126,10 +126,10 @@ public class EventBusSender {
 		});
 	}
 
-	private void saveWaitAckEvents(String receiverHost, BroadcastEvent event) {
-		String savedKey = receiverHost + "&" + event.getId();
+	private void saveWaitAckEvents(String receiverHost, Message<T> event) {
+		String savedKey = receiverHost + "&" + event.getHeaders().getId();
 		log.info("saveWaitAckEvents: key = {}", savedKey);
-		event.setReceiverHost(receiverHost);
+		event.getHeaders().setHeader(MessageHeaders.RECEIVER, receiverHost);
 		repository.save(savedKey, event);
 	}
 
@@ -159,9 +159,9 @@ public class EventBusSender {
 
 	private void acknowledgeReceiverAck(Buffer data) {
 		String jsonFormatData = data.toJson().toString();
-		BroadcastEvent broadcastEvent = JacksonUtil.json2Object(jsonFormatData, BroadcastEvent.class);
-		String receiverHost = broadcastEvent.getReceiverHost();
-		String deleteKey = receiverHost + "&" + broadcastEvent.getId();
+		Message<T> broadcastEvent = JacksonUtil.json2Object(jsonFormatData, Message.class);
+		String receiverHost = broadcastEvent.getHeaders().getReceiver();
+		String deleteKey = receiverHost + "&" + broadcastEvent.getHeaders().getId();
 		log.info("saveWaitAckEvents: key = {}", deleteKey);
 		repository.delete(deleteKey);
 	}
@@ -171,9 +171,8 @@ public class EventBusSender {
 	 * 接收到
 	 */
 	private void reSend() {
-		Map<String, List<BroadcastEvent>> snapshot = new HashMap<>(waitSendEvents);
+		Map<String, List<Message<T>>> snapshot = new HashMap<>(waitSendEvents);
 		snapshot.forEach((receiverHost, broadcastEvents) -> broadcastEvents.stream()
-				.filter(broadcastEvent -> !broadcastEvent.eventIsDeat())
 				.forEach(broadcastEvent -> {
 					receivers.get(receiverHost)
 							.write(JacksonUtil.object2Json(broadcastEvent),
@@ -191,8 +190,7 @@ public class EventBusSender {
 	 */
 	private void reBroadcast() {
 		repository.findAll()
-				.filter(event -> !event.eventIsDeat())
-				.subscribe(event -> receivers.get(event.getReceiverHost())
+				.subscribe(event -> receivers.get(event.getHeaders().get(MessageHeaders.RECEIVER))
 						.write(JacksonUtil.object2Json(event)));
 	}
 }
