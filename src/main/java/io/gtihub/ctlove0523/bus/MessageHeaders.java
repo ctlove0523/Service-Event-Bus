@@ -31,6 +31,10 @@ public class MessageHeaders implements Map<String, Object>, Serializable {
 
 	private Map<String, Object> headers;
 
+	public MessageHeaders() {
+		this.headers = new HashMap<>();
+	}
+
 	public MessageHeaders(Map<String, Object> headers) {
 		this.headers = new HashMap<>(headers);
 	}
@@ -102,6 +106,18 @@ public class MessageHeaders implements Map<String, Object>, Serializable {
 					key + "'. Expected [" + type + "] but actual type is [" + value.getClass() + "]");
 		}
 		return (T) value;
+	}
+
+	public void setHeader(String key, Object value) {
+		this.headers.put(key, value);
+	}
+
+	public void setHeaderIfAbsent(String key, Object value) {
+		this.headers.putIfAbsent(key, value);
+	}
+
+	public void removeHeader(String key) {
+		this.headers.remove(key);
 	}
 
 	@Nullable
